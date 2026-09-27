@@ -1,3 +1,5 @@
+<!-- 
+
 # Proc-Scanner
 
 Recolhe os IDs dos PDFs de uma pasta com 1 ou 3+ páginas (o segundo pedaço do nome,
@@ -13,3 +15,5 @@ Este repositório é gerado: não editar aqui. A fonte é `web/scanner.html` na 
 
 Terceiros: [pdf-lib](https://github.com/Hopding/pdf-lib) (MIT, `vendor/pdf-lib/LICENSE.md`),
 fonte [Inter](https://rsms.me/inter/) (SIL OFL 1.1, `fonts/OFL.txt`).
+
+-->
