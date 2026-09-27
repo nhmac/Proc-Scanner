@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Recolhe os IDs dos PDFs de uma pasta com 1 ou 3+ páginas, prontos a copiar.">
+<meta name="theme-color" content="#15171c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone.ico">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Proc-Scanner</title>
+<style>
+  @font-face { font-family: "Inter"; font-weight: 400; font-display: swap; src: url("fonts/Inter_18pt-Regular.ttf") format("truetype"); }
+  @font-face { font-family: "Inter"; font-weight: 600; font-display: swap; src: url("fonts/Inter_18pt-SemiBold.ttf") format("truetype"); }
+  @font-face { font-family: "Inter Display"; font-weight: 600; font-display: swap; src: url("fonts/Inter_24pt-SemiBold.ttf") format("truetype"); }
+  body { margin: 0; }
+  [hidden] { display: none !important; }
+</style>
+<style>
+  /* Tema da linha "Processamento" (processamento_ui.py): só dark mode, por opção */
+  :root {
+    color-scheme: dark;
+    --bg: #15171c;
+    --sidebar: #1c1f26;
+    --card: #232730;
+    --card-hover: #2b303b;
+    --sub: #1a1d23;
+    --linha-alt: #20242c;
+    --borda: #323845;
+    --texto: #f1f3f7;
+    --texto-sec: #a4acbb;
+    --accent: #4c8dff;
+    --accent-texto: #7fb0ff;
+    --accent-suave: #1f3358;
+    --sucesso: #1f9d5a;
+    --sucesso-hover: #1a8550;
+    --sucesso-texto: #5fd49a;
+    --erro: #e5484d;
+    --trilho: #2f3542;
+    --etiqueta-fundo: #3d2f0c;
+    --etiqueta-texto: #ffd166;
+    --sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --display: "Inter Display", "Inter", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--texto);
+    font: 14px/1.45 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .app { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100%; }
+
+  /* ---------------------------------------------------------------- Sidebar */
+  .sidebar {
+    background: var(--sidebar);
+    padding: 28px 24px 24px;
+    display: flex; flex-direction: column;
+    position: sticky; top: env(safe-area-inset-top, 0px);
+    height: 100vh; height: 100dvh; overflow-y: auto;
+  }
+  .sidebar h1 { margin: 0; font: 600 24px/1.2 var(--display); letter-spacing: -0.01em; }
+  .subtitulo { color: var(--texto-sec); font-size: 13px; }
+  .secao {
+    display: block;
+    margin: 32px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+    color: var(--texto-sec); text-transform: uppercase;
+  }
+  .grupo + .secao { margin-top: 28px; }
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; height: 40px; border-radius: 6px; cursor: pointer;
+    background: var(--card); border: 1px solid var(--borda); transition: background .15s;
+  }
+  .btn:hover:not(:disabled) { background: var(--card-hover); }
+  .btn:disabled { cursor: default; opacity: .55; }
+  .btn.copiado { color: var(--sucesso-texto); }
+  .chip { margin-top: 10px; background: var(--sub); border-radius: 8px; padding: 8px 12px; overflow-wrap: anywhere; }
+  .chip .nome { color: var(--texto-sec); }
+  .chip.escolhida .nome { color: var(--texto); }
+  .chip .contagem { color: var(--texto-sec); font-size: 13px; }
+  .link {
+    margin-top: 6px; margin-left: -6px; height: 30px; padding: 0 6px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--accent-texto); font-size: 13px; cursor: pointer; align-self: flex-start;
+  }
+  .link:hover:not(:disabled) { background: var(--card-hover); }
+  .link:disabled { opacity: .5; cursor: default; }
+  .privado { margin-top: 20px; font-size: 12.5px; color: var(--texto-sec); display: flex; gap: 8px; }
+  .privado svg { flex: none; margin-top: 2px; }
+  .rodape { margin-top: auto; padding-top: 24px; display: grid; gap: 12px; }
+  .btn-principal {
+    height: 42px; border: 0; border-radius: 6px; cursor: pointer; width: 100%;
+    background: var(--sucesso); color: #fff; font-size: 15px; font-weight: 600; transition: background .15s;
+  }
+  .btn-principal:hover:not(:disabled) { background: var(--sucesso-hover); }
+  .btn-principal:disabled { background: var(--card); color: var(--texto-sec); cursor: default; }
+  .versao { font-size: 12px; color: var(--texto-sec); text-align: center; opacity: .7; }
+
+  /* -------------------------------------------------------- Área principal */
+  main { padding: 24px 28px 16px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  .cabecalho { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .cabecalho h2 { margin: 0; font: 600 24px/1.3 var(--display); }
+  #estado { color: var(--texto-sec); text-align: right; }
+  #estado[data-tipo="ativo"] { color: var(--accent-texto); }
+  #estado[data-tipo="ok"] { color: var(--sucesso); }
+  #estado[data-tipo="erro"] { color: var(--erro); }
+
+  .barra { height: 6px; border-radius: 3px; background: var(--trilho); overflow: hidden; }
+  .barra > i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--accent); transition: width .15s; }
+  #progresso { margin-top: -4px; }
+
+  .card { background: var(--card); border: 1px solid var(--borda); border-radius: 10px; }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .stat { padding: 12px 16px; }
+  .stat b { display: block; font: 600 28px/1.25 var(--display); font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--texto-sec); font-size: 13px; }
+
+  .aviso-exemplo {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 14px; border-radius: 8px; border: 1px dashed var(--borda); color: var(--texto-sec);
+  }
+  .pill {
+    display: inline-flex; align-items: center; justify-content: center; height: 24px; min-width: 84px; padding: 0 10px;
+    border-radius: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap;
+    background: var(--accent-suave); color: var(--accent-texto); font-variant-numeric: tabular-nums;
+  }
+  .pill.exemplo { height: 28px; min-width: 0; background: var(--etiqueta-fundo); color: var(--etiqueta-texto); }
+
+  #lista { display: grid; align-content: start; }
+  .linha {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 12px;
+    padding: 6px 12px 6px 8px; border-radius: 6px;
+  }
+  .linha:nth-child(even) { background: var(--linha-alt); }
+  .linha .nome { font: 13px/20px var(--mono); overflow-wrap: anywhere; }
+  .linha .pags { color: var(--texto-sec); font-size: 13px; white-space: nowrap; }
+  .vazio { padding: 120px 16px; text-align: center; color: var(--texto-sec); }
+
+  /* Arrastar uma pasta para a janela */
+  .largar {
+    position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+    background: rgba(21, 23, 28, .88); border: 2px dashed var(--accent); pointer-events: none;
+    font-size: 18px; font-weight: 600; color: var(--accent-texto);
+  }
+
+  @media (max-width: 760px) {
+    .app { grid-template-columns: minmax(0, 1fr); }
+    .sidebar { position: static; height: auto; padding: 24px 16px; overflow: visible; }
+    main { padding: 20px 16px; }
+    .stats { gap: 8px; }
+    .stat { padding: 10px 12px; }
+    .stat b { font-size: 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <h1>Proc-Scanner</h1>
+    <div class="subtitulo">IDs de PDFs com 1 ou 3+ páginas</div>
+
+    <div class="secao">Pasta</div>
+    <div class="grupo">
+      <button class="btn" id="btn-pasta" type="button">Escolher pasta…</button>
+      <input id="input-pasta" type="file" webkitdirectory multiple hidden>
+      <div class="chip" id="chip">
+        <div class="nome" id="nome-pasta">Nenhuma pasta selecionada</div>
+        <div class="contagem" id="n-pdfs" hidden></div>
+      </div>
+    </div>
+
+    <div class="secao">Ações</div>
+    <button class="btn" id="btn-copiar" type="button" disabled>Copiar IDs</button>
+    <button class="link" id="btn-limpar" type="button">Limpar resultados</button>
+
+    <div class="privado">
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" d="M4 7V5a4 4 0 0 1 8 0v2M3 7h10v7H3z"/></svg>
+      <span>Os PDFs são lidos neste browser. Nenhum ficheiro é enviado.</span>
+    </div>
+
+    <div class="rodape">
+      <button class="btn-principal" id="btn-processar" type="button">Processar</button>
+      <div class="versao">Versão web 1.0</div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="cabecalho">
+      <h2>Resultados</h2>
+      <div id="estado" role="status">Pronto para iniciar</div>
+    </div>
+    <div class="barra" id="progresso" hidden><i></i></div>
+
+    <div class="stats" id="stats" hidden>
+      <div class="card stat"><b id="stat-analisados">0</b><span>Ficheiros analisados</span></div>
+      <div class="card stat"><b id="stat-ids">0</b><span>IDs recolhidos</span></div>
+      <div class="card stat"><b id="stat-ignorados">0</b><span>Ignorados</span></div>
+    </div>
+
+    <div class="aviso-exemplo" id="aviso-exemplo" hidden>
+      <span class="pill exemplo">EXEMPLO</span>
+      <span>Dados fictícios. Escolha uma pasta e carregue em Processar.</span>
+    </div>
+
+    <div id="lista"></div>
+    <div class="vazio" id="vazio" hidden></div>
+  </main>
+</div>
+<div class="largar" id="largar" hidden>Largue a pasta com os PDFs</div>
+
+<script src="vendor/pdf-lib/pdf-lib.min.js"></script>
+
+<script id="logica">
+// Mesma lógica do main.py (Scanner em Python). Sem acesso ao DOM, para poder ser testada à parte.
+// O pdf-lib conta as páginas percorrendo a árvore de páginas, como o len(PdfReader(...).pages) do pypdf.
+const Logica = (() => {
+  // O ID é o segundo pedaço do nome: "6475791_1408534_label.pdf" -> "1408534"
+  function extrairIdNome(nome) {
+    const partes = nome.split("_");
+    return partes.length > 1 ? partes[1] : "";
+  }
+
+  // Ordem do os.listdir numa pasta do Windows (NTFS): nomes comparados em maiúsculas
+  function ordemDaPasta(a, b) {
+    const x = a.toUpperCase(), y = b.toUpperCase();
+    return x < y ? -1 : x > y ? 1 : a < b ? -1 : a > b ? 1 : 0;
+  }
+
+  async function contarPaginas(dados) {
+    const pdf = await PDFLib.PDFDocument.load(dados, {
+      ignoreEncryption: true, updateMetadata: false, parseSpeed: PDFLib.ParseSpeeds.Fastest,
+    });
+    return pdf.getPageCount();
+  }
+
+  // ficheiros: [{nome, ler: () => Promise<ArrayBuffer>}]. aoResultado(nome, paginas, id) é
+  // chamado a cada PDF com 1 ou 3+ páginas e ID no nome; aoAnalisar(n) a cada PDF lido.
+  async function processar(ficheiros, { aoResultado = () => {}, aoAnalisar = () => {}, progresso = () => {} } = {}) {
+    const arquivos = ficheiros.filter(f => f.nome.toLowerCase().endsWith(".pdf"))
+      .sort((a, b) => ordemDaPasta(a.nome, b.nome));
+    const ids = [];
+    let analisados = 0;
+    for (const [i, f] of arquivos.entries()) {
+      try {
+        const paginas = await contarPaginas(new Uint8Array(await f.ler()));
+        analisados++;
+        if (paginas === 1 || paginas > 2) {
+          const id = extrairIdNome(f.nome);
+          if (id) {
+            ids.push(id);
+            aoResultado(f.nome, paginas, id);
+          }
+        }
+        aoAnalisar(analisados);
+      } catch (e) {
+        // PDF ilegível: fica de fora, como no Python
+      }
+      progresso((i + 1) / arquivos.length);
+    }
+    return { total: arquivos.length, analisados, ids };
+  }
+
+  const textoClipboard = ids => ids.join(" OR ");
+
+  return { processar, extrairIdNome, ordemDaPasta, contarPaginas, textoClipboard };
+})();
+</script>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const fmt = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const s = n => (n === 1 ? "" : "s");
+
+  let ficheiros = null;   // [{nome, ler}] da pasta escolhida
+  let ids = [];
+  let analisados = 0;
+  let ocupado = false;
+  let exemplo = false;
+
+  function estado(texto, tipo = "idle") {
+    $("estado").textContent = texto;
+    $("estado").dataset.tipo = tipo;
+  }
+
+  function atualizarResumo(n) {
+    if (n !== undefined) analisados = n;
+    $("stat-analisados").textContent = fmt(analisados);
+    $("stat-ids").textContent = fmt(ids.length);
+    $("stat-ignorados").textContent = fmt(analisados - ids.length);
+  }
+
+  function mostrarVazio(texto = "Escolha uma pasta e carregue em Processar") {
+    $("vazio").textContent = texto;
+    $("vazio").hidden = false;
+  }
+
+  function limpar() {
+    if (ocupado) return;
+    exemplo = false;
+    $("aviso-exemplo").hidden = true;
+    $("lista").replaceChildren();
+    progresso(0);
+    ids = [];
+    analisados = 0;
+    $("stats").hidden = true;
+    $("btn-copiar").disabled = true;
+    estado("Pronto para iniciar");
+    mostrarVazio();
+  }
+
+  function adicionarResultado(nome, pags, id) {
+    $("vazio").hidden = true;
+    ids.push(id);
+    const linha = document.createElement("div");
+    linha.className = "linha";
+    const pill = Object.assign(document.createElement("span"), { className: "pill", textContent: id });
+    const nomeEl = Object.assign(document.createElement("span"), { className: "nome", textContent: nome });
+    const pagsEl = Object.assign(document.createElement("span"), { className: "pags", textContent: `${pags} pág${s(pags)}.` });
+    linha.append(pill, nomeEl, pagsEl);
+    $("lista").append(linha);
+  }
+
+  // ------------------------------------------------------------------ pasta
+  function definirPasta(lista, nome) {
+    ficheiros = lista;
+    const n = lista.filter(f => f.nome.toLowerCase().endsWith(".pdf")).length;
+    $("nome-pasta").textContent = nome;
+    $("chip").classList.add("escolhida");
+    $("n-pdfs").textContent = `${n} PDF${s(n)} encontrado${s(n)}`;
+    $("n-pdfs").hidden = false;
+  }
+
+  // Escolher pasta: só os ficheiros da própria pasta, sem subpastas (como o os.listdir)
+  $("btn-pasta").addEventListener("click", () => $("input-pasta").click());
+  $("input-pasta").addEventListener("change", e => {
+    const todos = [...e.target.files];
+    if (!todos.length) return;
+    const topo = todos.filter(f => (f.webkitRelativePath || f.name).split("/").length <= 2);
+    const pasta = (todos[0].webkitRelativePath || "").split("/")[0] || `${todos.length} ficheiros`;
+    definirPasta(topo.map(f => ({ nome: f.name, ler: () => f.arrayBuffer() })), pasta);
+    e.target.value = "";
+  });
+
+  // Arrastar uma pasta (ou PDFs soltos) para a janela
+  let arrastos = 0;
+  addEventListener("dragenter", e => { if (ocupado) return; e.preventDefault(); arrastos++; $("largar").hidden = false; });
+  addEventListener("dragleave", () => { if (--arrastos <= 0) { arrastos = 0; $("largar").hidden = true; } });
+  addEventListener("dragover", e => e.preventDefault());
+  addEventListener("drop", async e => {
+    e.preventDefault();
+    arrastos = 0;
+    $("largar").hidden = true;
+    if (ocupado) return;
+    const entradas = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    const pasta = entradas.length === 1 && entradas[0].isDirectory ? entradas[0] : null;
+    let lista = [];
+    if (pasta) {
+      const leitor = pasta.createReader();
+      for (;;) {
+        const lote = await new Promise((ok, erro) => leitor.readEntries(ok, erro));
+        if (!lote.length) break;
+        lista.push(...lote.filter(x => x.isFile));
+      }
+      lista = lista.map(x => ({ nome: x.name, ler: () => new Promise((ok, erro) => x.file(f => f.arrayBuffer().then(ok, erro), erro)) }));
+    } else {
+      lista = [...e.dataTransfer.files].map(f => ({ nome: f.name, ler: () => f.arrayBuffer() }));
+    }
+    if (lista.length) definirPasta(lista, pasta ? pasta.name : `${lista.length} ficheiro${s(lista.length)}`);
+  });
+
+  // ------------------------------------------------------------------ processar
+  function setOcupado(sim) {
+    ocupado = sim;
+    $("btn-processar").disabled = sim;
+    $("btn-processar").textContent = sim ? "A processar…" : "Processar";
+    $("btn-pasta").disabled = sim;
+    $("btn-limpar").disabled = sim;
+    if (sim) $("btn-copiar").disabled = true;
+    $("progresso").hidden = !sim;
+  }
+
+  function progresso(x) { $("progresso").firstElementChild.style.width = `${x * 100}%`; }
+
+  $("btn-processar").addEventListener("click", async () => {
+    if (ocupado) return;
+    if (!ficheiros) { estado("Selecione uma pasta primeiro!", "erro"); return; }
+    if (!window.PDFLib) { estado("Erro: o leitor de PDF não carregou. Recarregue a página.", "erro"); return; }
+
+    // Limpar antes de começar: os resultados novos nunca se misturam com os antigos
+    limpar();
+    atualizarResumo();
+    $("stats").hidden = false;
+    setOcupado(true);
+    estado("A analisar ficheiros… aguarde.", "ativo");
+    try {
+      const res = await Logica.processar(ficheiros, {
+        aoResultado: adicionarResultado, aoAnalisar: atualizarResumo, progresso,
+      });
+      setOcupado(false);
+      if (!res.total) { estado("Nenhum PDF encontrado na pasta.", "erro"); return; }
+      const n = ids.length;
+      if (n) $("btn-copiar").disabled = false;
+      else mostrarVazio("Nenhum PDF com 1 ou 3+ páginas nesta pasta");
+      estado(`Concluído: ${n} ID${s(n)} recolhido${s(n)}.`, "ok");
+    } catch (e) {
+      setOcupado(false);
+      estado("Erro ao processar", "erro");
+    }
+  });
+
+  $("btn-copiar").addEventListener("click", async () => {
+    if (!ids.length || exemplo) return;
+    try {
+      await navigator.clipboard.writeText(Logica.textoClipboard(ids));
+    } catch (e) {
+      estado("Não foi possível copiar para o clipboard.", "erro");
+      return;
+    }
+    const n = ids.length;
+    estado(`${n} ID${s(n)} copiado${s(n)} para o clipboard.`, "ok");
+    const b = $("btn-copiar");
+    b.textContent = "Copiado ✓";
+    b.classList.add("copiado");
+    setTimeout(() => { b.textContent = "Copiar IDs"; b.classList.remove("copiado"); }, 2000);
+  });
+
+  $("btn-limpar").addEventListener("click", limpar);
+
+  // Estado inicial: um exemplo com dados fictícios, até se processar uma pasta
+  exemplo = true;
+  $("aviso-exemplo").hidden = false;
+  $("stats").hidden = false;
+  [["1000101_500001_label.pdf", 1, "500001"], ["1000118_500031_label.pdf", 3, "500031"],
+   ["1000124_500040_label.pdf", 1, "500040"], ["1000140_500066_label.pdf", 4, "500066"]]
+    .forEach(([nome, p, id]) => adicionarResultado(nome, p, id));
+  atualizarResumo(6);
+})();
+</script>
+
+<script>
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
