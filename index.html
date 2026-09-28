@@ -204,11 +204,6 @@
       <div class="card stat"><b id="stat-ignorados">0</b><span>Ignorados</span></div>
     </div>
 
-    <div class="aviso-exemplo" id="aviso-exemplo" hidden>
-      <span class="pill exemplo">EXEMPLO</span>
-      <span>Dados fictícios. Escolha uma pasta e carregue em Processar.</span>
-    </div>
-
     <div id="lista"></div>
     <div class="vazio" id="vazio" hidden></div>
   </main>
@@ -283,7 +278,6 @@ const Logica = (() => {
   let ids = [];
   let analisados = 0;
   let ocupado = false;
-  let exemplo = false;
 
   function estado(texto, tipo = "idle") {
     $("estado").textContent = texto;
@@ -304,8 +298,6 @@ const Logica = (() => {
 
   function limpar() {
     if (ocupado) return;
-    exemplo = false;
-    $("aviso-exemplo").hidden = true;
     $("lista").replaceChildren();
     progresso(0);
     ids = [];
@@ -417,7 +409,7 @@ const Logica = (() => {
   });
 
   $("btn-copiar").addEventListener("click", async () => {
-    if (!ids.length || exemplo) return;
+    if (!ids.length) return;
     try {
       await navigator.clipboard.writeText(Logica.textoClipboard(ids));
     } catch (e) {
@@ -434,14 +426,8 @@ const Logica = (() => {
 
   $("btn-limpar").addEventListener("click", limpar);
 
-  // Estado inicial: um exemplo com dados fictícios, até se processar uma pasta
-  exemplo = true;
-  $("aviso-exemplo").hidden = false;
-  $("stats").hidden = false;
-  [["1000101_500001_label.pdf", 1, "500001"], ["1000118_500031_label.pdf", 3, "500031"],
-   ["1000124_500040_label.pdf", 1, "500040"], ["1000140_500066_label.pdf", 4, "500066"]]
-    .forEach(([nome, p, id]) => adicionarResultado(nome, p, id));
-  atualizarResumo(6);
+  // Estado inicial: sem dados até se processar uma pasta
+  mostrarVazio();
 })();
 </script>
 
