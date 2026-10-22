@@ -112,7 +112,27 @@
 
   .barra { height: 6px; border-radius: 3px; background: var(--trilho); overflow: hidden; }
   .barra > i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--accent); transition: width .15s; }
-  #progresso { margin-top: -4px; }
+  /* Progresso, igual nas três apps da linha (no Python é o ui.Progresso): a barra fina e, por
+     baixo, o que está a fazer à esquerda e a percentagem e o tempo que falta à direita */
+  /* min-width 0 e minmax: um nome de ficheiro comprido corta-se com reticências, não alarga a página */
+  .progresso { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 6px; margin-top: -4px; transition: opacity .2s; }
+  .progresso.a-sair { opacity: 0; }
+  .progresso .barra > i { background: var(--accent); transition: width .15s, background-color .2s; }
+  .progresso[data-estado="ok"] .barra > i { background: var(--sucesso); }
+  .progresso[data-estado="erro"] .barra > i { background: var(--erro); }
+  .progresso[data-estado="indeterminado"] .barra > i { width: 30% !important; animation: progresso-desliza 1.3s ease-in-out infinite; }
+  @keyframes progresso-desliza { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+  .progresso-legenda {
+    display: flex; justify-content: space-between; gap: 16px; min-height: 18px;
+    font-size: 12.5px; line-height: 18px; color: var(--texto-sec); font-variant-numeric: tabular-nums;
+  }
+  .progresso-detalhe { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .progresso-valor { flex: none; white-space: nowrap; }
+  .progresso[data-estado="ok"] .progresso-legenda { color: var(--sucesso-texto); }
+  .progresso[data-estado="erro"] .progresso-legenda { color: var(--erro); }
+  @media (prefers-reduced-motion: reduce) {
+    .progresso[data-estado="indeterminado"] .barra > i { animation: none; width: 100% !important; opacity: .4; }
+  }
 
   .card { background: var(--card); border: 1px solid var(--borda); border-radius: 10px; }
   .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
@@ -187,7 +207,7 @@
 
     <div class="rodape">
       <button class="btn-principal" id="btn-processar" type="button">Processar</button>
-      <div class="versao">Versão web 1.0</div>
+      <div class="versao">Versão web 1.1</div>
     </div>
   </aside>
 
@@ -196,7 +216,10 @@
       <h2>Resultados</h2>
       <div id="estado" role="status">Pronto para iniciar</div>
     </div>
-    <div class="barra" id="progresso" hidden><i></i></div>
+    <div class="progresso" id="progresso" role="progressbar" aria-label="Progresso" aria-valuemin="0" aria-valuemax="100" hidden>
+      <div class="barra"><i></i></div>
+      <div class="progresso-legenda"><span class="progresso-detalhe"></span><span class="progresso-valor"></span></div>
+    </div>
 
     <div class="stats" id="stats" hidden>
       <div class="card stat"><b id="stat-analisados">0</b><span>Ficheiros analisados</span></div>
@@ -243,6 +266,8 @@ const Logica = (() => {
     const ids = [];
     let analisados = 0;
     for (const [i, f] of arquivos.entries()) {
+      // Antes de ler: diz qual é o PDF; depois: a barra avança
+      progresso(i / arquivos.length, { atual: i + 1, total: arquivos.length, nome: f.nome });
       try {
         const paginas = await contarPaginas(new Uint8Array(await f.ler()));
         analisados++;
@@ -266,6 +291,99 @@ const Logica = (() => {
 
   return { processar, extrairIdNome, ordemDaPasta, contarPaginas, textoClipboard };
 })();
+</script>
+
+<script>
+// Barra de progresso da linha "Processamento", igual nas três apps (no Python é o ui.Progresso).
+//   iniciar(detalhe)     mostra-a, numa fase sem medida
+//   fase(detalhe)        fase sem medida (abrir um PDF, conferir): a barra desliza
+//   atualizar(x, detalhe) põe-na em x, de 0 a 1; sem detalhe fica o anterior
+//   concluir(ok, detalhe) verde (ou vermelha), e recolhe-a passados 1,5 s
+// O tempo que falta mede-se desde o início da fase com medida, e só aparece com 1,5 s e 5 % feitos.
+function criarProgresso(el, tituloBase = document.title) {
+  const barra = el.querySelector(".barra > i");
+  const detalheEl = el.querySelector(".progresso-detalhe");
+  const valorEl = el.querySelector(".progresso-valor");
+  const pct = x => `${Math.floor(x * 100)}\u00a0%`;
+  const tempo = s => {
+    if (s < 60) return `${Math.max(1, Math.round(s))} s`;
+    const r = Math.round(s / 5) * 5;
+    return r % 60 ? `${Math.floor(r / 60)} min ${r % 60} s` : `${r / 60} min`;
+  };
+  let estado = "indeterminado", x = 0, detalhe = "", valor = "";
+  let t0 = 0, base = null, falta = null, ultimo = 0, pedido = 0, saida = 0, tituloFinal = false;
+
+  // O DOM muda no máximo uma vez por frame: há apps que leem centenas de PDFs por segundo
+  function pintar() {
+    pedido = 0;
+    el.dataset.estado = estado;
+    detalheEl.textContent = detalhe;
+    valorEl.textContent = valor;
+    if (estado === "indeterminado") el.removeAttribute("aria-valuenow");
+    else {
+      barra.style.width = `${x * 100}%`;
+      el.setAttribute("aria-valuenow", String(Math.floor(x * 100)));
+    }
+    const texto = estado === "ativo" ? [pct(x), detalhe].filter(Boolean).join(" · ") : detalhe;
+    if (texto) el.setAttribute("aria-valuetext", texto); else el.removeAttribute("aria-valuetext");
+  }
+  const agendar = () => { if (!pedido) pedido = requestAnimationFrame(pintar); };
+  const agora = () => { if (pedido) { cancelAnimationFrame(pedido); pedido = 0; } pintar(); };
+  // O título muda logo (o requestAnimationFrame pára com o separador em segundo plano)
+  const titulo = t => { if (document.title !== t) document.title = t; };
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && tituloFinal) { tituloFinal = false; titulo(tituloBase); }
+  });
+
+  return {
+    iniciar(texto = "") {
+      clearTimeout(saida);
+      el.classList.remove("a-sair");
+      if (el.hidden) barra.style.width = "0%"; // ainda escondida: não anima de volta ao zero
+      t0 = performance.now();
+      x = 0; base = null; falta = null; tituloFinal = false;
+      estado = "indeterminado"; detalhe = texto; valor = "";
+      agora();
+      el.hidden = false;
+    },
+    fase(texto) {
+      estado = "indeterminado"; detalhe = texto; valor = ""; base = null; falta = null;
+      titulo(tituloBase); // sem medida não há % para mostrar
+      agendar();
+    },
+    atualizar(novoX, texto) {
+      const t = performance.now();
+      x = Math.min(1, Math.max(0, novoX));
+      if (texto !== undefined) detalhe = texto;
+      if (estado !== "ativo" || base === null) { base = { t, x }; falta = null; }
+      estado = "ativo";
+      const passou = (t - base.t) / 1000, feito = x - base.x;
+      if (passou >= 1.5 && x >= 0.05 && feito > 0) {
+        const estimativa = passou * (1 - x) / feito;
+        // Média móvel, descontando o tempo desde a última estimativa: o número não salta
+        falta = falta === null ? estimativa : 0.6 * Math.max(0, falta - (t - ultimo) / 1000) + 0.4 * estimativa;
+        ultimo = t;
+      }
+      valor = falta !== null && falta >= 2 ? `${pct(x)} · ~${tempo(falta)}` : pct(x);
+      titulo(`${pct(x)} · ${tituloBase}`);
+      agendar();
+    },
+    concluir(ok = true, texto) {
+      estado = ok ? "ok" : "erro";
+      x = 1;
+      detalhe = texto ?? (ok ? `Concluído em ${tempo((performance.now() - t0) / 1000)}` : "Interrompido");
+      valor = ok ? "100\u00a0%" : "";
+      agora();
+      if (document.hidden) { titulo(`${ok ? "✓ Concluído" : "✗ Erro"} · ${tituloBase}`); tituloFinal = true; }
+      else titulo(tituloBase);
+      clearTimeout(saida);
+      saida = setTimeout(() => {
+        el.classList.add("a-sair");
+        saida = setTimeout(() => { el.hidden = true; el.classList.remove("a-sair"); }, 200);
+      }, 1500);
+    },
+  };
+}
 </script>
 
 <script>
@@ -299,7 +417,6 @@ const Logica = (() => {
   function limpar() {
     if (ocupado) return;
     $("lista").replaceChildren();
-    progresso(0);
     ids = [];
     analisados = 0;
     $("stats").hidden = true;
@@ -376,10 +493,10 @@ const Logica = (() => {
     $("btn-pasta").disabled = sim;
     $("btn-limpar").disabled = sim;
     if (sim) $("btn-copiar").disabled = true;
-    $("progresso").hidden = !sim;
   }
 
-  function progresso(x) { $("progresso").firstElementChild.style.width = `${x * 100}%`; }
+  const barraProgresso = criarProgresso($("progresso"));
+  const progresso = (x, d) => barraProgresso.atualizar(x, d && `${fmt(d.atual)} de ${fmt(d.total)} PDFs · ${d.nome}`);
 
   $("btn-processar").addEventListener("click", async () => {
     if (ocupado) return;
@@ -391,19 +508,26 @@ const Logica = (() => {
     atualizarResumo();
     $("stats").hidden = false;
     setOcupado(true);
-    estado("A analisar ficheiros… aguarde.", "ativo");
+    barraProgresso.iniciar("A preparar…");
+    estado("A analisar os PDFs…", "ativo");
     try {
       const res = await Logica.processar(ficheiros, {
         aoResultado: adicionarResultado, aoAnalisar: atualizarResumo, progresso,
       });
       setOcupado(false);
-      if (!res.total) { estado("Nenhum PDF encontrado na pasta.", "erro"); return; }
+      if (!res.total) {
+        barraProgresso.concluir(false, "Nenhum PDF na pasta");
+        estado("Nenhum PDF encontrado na pasta.", "erro");
+        return;
+      }
+      barraProgresso.concluir(true);
       const n = ids.length;
       if (n) $("btn-copiar").disabled = false;
       else mostrarVazio("Nenhum PDF com 1 ou 3+ páginas nesta pasta");
       estado(`Concluído: ${n} ID${s(n)} recolhido${s(n)}.`, "ok");
     } catch (e) {
       setOcupado(false);
+      barraProgresso.concluir(false);
       estado("Erro ao processar", "erro");
     }
   });
