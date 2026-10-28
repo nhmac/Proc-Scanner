@@ -30,6 +30,7 @@
     --texto: #f1f3f7;
     --texto-sec: #a4acbb;
     --accent: #4c8dff;
+    --accent-hover: #3a78e8;
     --accent-texto: #7fb0ff;
     --accent-suave: #1f3358;
     --sucesso: #1f9d5a;
@@ -99,6 +100,8 @@
   }
   .btn-principal:hover:not(:disabled) { background: var(--sucesso-hover); }
   .btn-principal:disabled { background: var(--card); color: var(--texto-sec); cursor: default; }
+  .btn-principal.azul { background: var(--accent); }
+  .btn-principal.azul:hover:not(:disabled) { background: var(--accent-hover); }
   .versao { font-size: 12px; color: var(--texto-sec); text-align: center; opacity: .7; }
 
   /* -------------------------------------------------------- Área principal */
@@ -151,6 +154,22 @@
   }
   .pill.exemplo { height: 28px; min-width: 0; background: var(--etiqueta-fundo); color: var(--etiqueta-texto); }
 
+  /* Pesquisa no Explorador: os IDs em grupos que cabem na caixa de pesquisa, um Copiar por grupo */
+  .pesquisa { padding: 16px 18px; display: grid; gap: 14px; }
+  .pesquisa-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap; }
+  .pesquisa-topo b { font-weight: 600; }
+  .dica { font-size: 12.5px; color: var(--texto-sec); }
+  .grupos { display: grid; gap: 14px; }
+  .grupo-ids { display: grid; gap: 6px; }
+  .campo { display: flex; gap: 8px; align-items: stretch; }
+  .campo code {
+    flex: 1; min-width: 0; padding: 9px 12px; border-radius: 6px; user-select: all;
+    background: var(--sub); border: 1px solid var(--borda); font: 14px/22px var(--mono); overflow-wrap: anywhere;
+  }
+  .campo code span { white-space: nowrap; }
+  .campo .copiar { width: auto; min-width: 120px; height: 42px; align-self: flex-start; }
+  .copiar.copiado, .copiar.copiado:hover:not(:disabled) { background: var(--sucesso); }
+
   #lista { display: grid; align-content: start; }
   .linha {
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 12px;
@@ -175,6 +194,8 @@
     .stats { gap: 8px; }
     .stat { padding: 10px 12px; }
     .stat b { font-size: 22px; }
+    .campo { flex-direction: column; }
+    .campo .copiar { width: 100%; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -207,7 +228,7 @@
 
     <div class="rodape">
       <button class="btn-principal" id="btn-processar" type="button">Processar</button>
-      <div class="versao">Versão web 1.1</div>
+      <div class="versao">Versão web 1.2</div>
     </div>
   </aside>
 
@@ -226,6 +247,14 @@
       <div class="card stat"><b id="stat-ids">0</b><span>IDs recolhidos</span></div>
       <div class="card stat"><b id="stat-ignorados">0</b><span>Ignorados</span></div>
     </div>
+
+    <section class="card pesquisa" id="pesquisa" aria-labelledby="pesquisa-titulo" hidden>
+      <div class="pesquisa-topo">
+        <b id="pesquisa-titulo">Pesquisa no Explorador</b>
+        <span class="dica" id="pesquisa-dica"></span>
+      </div>
+      <div class="grupos" id="grupos"></div>
+    </section>
 
     <div id="lista"></div>
     <div class="vazio" id="vazio" hidden></div>
@@ -289,7 +318,28 @@ const Logica = (() => {
 
   const textoClipboard = ids => ids.join(" OR ");
 
-  return { processar, extrairIdNome, ordemDaPasta, contarPaginas, textoClipboard };
+  // A caixa de pesquisa do Explorador do Windows 10 não aceita textos muito compridos (o limite não
+  // está documentado; 250 é a escolha do utilizador). Os IDs vão em grupos, pela mesma ordem, cada
+  // um no máximo com LIMITE_PESQUISA caracteres. Um ID sozinho acima do limite fica num grupo só dele.
+  const LIMITE_PESQUISA = 250;
+  function gruposPesquisa(ids, limite = LIMITE_PESQUISA) {
+    const grupos = [];
+    let atual = [], tamanho = 0;
+    for (const id of ids) {
+      const extra = atual.length ? 4 + id.length : id.length; // " OR " + id
+      if (atual.length && tamanho + extra > limite) {
+        grupos.push(atual);
+        atual = [];
+        tamanho = 0;
+      }
+      tamanho += atual.length ? 4 + id.length : id.length;
+      atual.push(id);
+    }
+    if (atual.length) grupos.push(atual);
+    return grupos.map(g => ({ ids: g, texto: textoClipboard(g) }));
+  }
+
+  return { processar, extrairIdNome, ordemDaPasta, contarPaginas, textoClipboard, gruposPesquisa, LIMITE_PESQUISA };
 })();
 </script>
 
@@ -417,6 +467,8 @@ function criarProgresso(el, tituloBase = document.title) {
   function limpar() {
     if (ocupado) return;
     $("lista").replaceChildren();
+    $("grupos").replaceChildren();
+    $("pesquisa").hidden = true;
     ids = [];
     analisados = 0;
     $("stats").hidden = true;
@@ -435,6 +487,58 @@ function criarProgresso(el, tituloBase = document.title) {
     const pagsEl = Object.assign(document.createElement("span"), { className: "pags", textContent: `${pags} pág${s(pags)}.` });
     linha.append(pill, nomeEl, pagsEl);
     $("lista").append(linha);
+  }
+
+  // ------------------------------------------------------------------ pesquisa no Explorador
+  const el = (tag, props = {}, ...filhos) => {
+    const e = Object.assign(document.createElement(tag), props);
+    e.append(...filhos);
+    return e;
+  };
+
+  // Copia o texto; sem acesso ao clipboard, deixa-o selecionado para o Ctrl+C
+  async function copiarTexto(texto, codigo) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    } catch (e) {
+      if (!codigo) return false;
+      const intervalo = document.createRange();
+      intervalo.selectNodeContents(codigo);
+      getSelection().removeAllRanges();
+      getSelection().addRange(intervalo);
+      try { return document.execCommand("copy"); } catch (e2) { return false; }
+    }
+  }
+
+  // Um grupo por linha, com o seu Copiar. O botão fica em "Copiado ✓" para se ver o que já foi
+  // pesquisado; carregar outra vez copia de novo.
+  function mostrarGrupos() {
+    const grupos = Logica.gruposPesquisa(ids);
+    const n = grupos.length;
+    $("pesquisa-dica").textContent = n > 1
+      ? `${n} grupos de até ${Logica.LIMITE_PESQUISA} caracteres · colar um de cada vez na pesquisa do Explorador`
+      : "Colar na pesquisa do Explorador";
+    $("grupos").replaceChildren(...grupos.map((g, k) => {
+      const codigo = el("code");
+      g.ids.forEach((id, i) => {
+        if (i) codigo.append(" OR", el("wbr"), " ");
+        codigo.append(el("span", { textContent: id }));
+      });
+      const botao = el("button", { className: "btn-principal azul copiar", type: "button", textContent: "Copiar" });
+      botao.addEventListener("click", async () => {
+        const ok = await copiarTexto(g.texto, codigo);
+        botao.textContent = ok ? "Copiado ✓" : "Ctrl+C";
+        botao.classList.toggle("copiado", ok);
+        const m = g.ids.length;
+        if (ok) estado(`Grupo ${k + 1} de ${n} copiado (${m} ID${s(m)}).`, "ok");
+      });
+      const titulo = n > 1 ? `Grupo ${k + 1} de ${n} · ` : "";
+      return el("div", { className: "grupo-ids" },
+        el("div", { className: "dica", textContent: `${titulo}${g.ids.length} ID${s(g.ids.length)}` }),
+        el("div", { className: "campo" }, codigo, botao));
+    }));
+    $("pesquisa").hidden = !n;
   }
 
   // ------------------------------------------------------------------ pasta
@@ -522,7 +626,7 @@ function criarProgresso(el, tituloBase = document.title) {
       }
       barraProgresso.concluir(true);
       const n = ids.length;
-      if (n) $("btn-copiar").disabled = false;
+      if (n) { $("btn-copiar").disabled = false; mostrarGrupos(); }
       else mostrarVazio("Nenhum PDF com 1 ou 3+ páginas nesta pasta");
       estado(`Concluído: ${n} ID${s(n)} recolhido${s(n)}.`, "ok");
     } catch (e) {
@@ -534,9 +638,7 @@ function criarProgresso(el, tituloBase = document.title) {
 
   $("btn-copiar").addEventListener("click", async () => {
     if (!ids.length) return;
-    try {
-      await navigator.clipboard.writeText(Logica.textoClipboard(ids));
-    } catch (e) {
+    if (!(await copiarTexto(Logica.textoClipboard(ids)))) {
       estado("Não foi possível copiar para o clipboard.", "erro");
       return;
     }

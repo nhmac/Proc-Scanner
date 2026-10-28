@@ -1,5 +1,5 @@
 // Gerado pelo build_pages.py
-const CACHE = "proc-scanner-eb355098f5a6";
+const CACHE = "proc-scanner-529ea1d30ed1";
 const FICHEIROS = ["./", "fonts/Inter_18pt-Regular.ttf", "fonts/Inter_18pt-SemiBold.ttf", "fonts/Inter_24pt-SemiBold.ttf", "fonts/OFL.txt", "icon-192.png", "icon-512.png", "icone.ico", "index.html", "manifest.webmanifest", "vendor/pdf-lib/LICENSE.md", "vendor/pdf-lib/pdf-lib.min.js"];
 
 self.addEventListener("install", e => {
