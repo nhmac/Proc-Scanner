@@ -228,7 +228,7 @@
 
     <div class="rodape">
       <button class="btn-principal" id="btn-processar" type="button">Processar</button>
-      <div class="versao">Versão web 1.3</div>
+      <div class="versao">Versão web 1.4</div>
     </div>
   </aside>
 
@@ -321,13 +321,15 @@ const Logica = (() => {
   // A caixa de pesquisa do Explorador do Windows 10 corta o texto colado aos 400 caracteres (medido
   // no Bloco de notas: o texto colado acaba na coluna 401). Os IDs vão em grupos, pela mesma ordem, cada
   // um no máximo com LIMITE_PESQUISA caracteres. Um ID sozinho acima do limite fica num grupo só dele.
+  // Cada grupo (separação) leva no máximo MAX_IDS_GRUPO IDs.
   const LIMITE_PESQUISA = 400;
-  function gruposPesquisa(ids, limite = LIMITE_PESQUISA) {
+  const MAX_IDS_GRUPO = 23;
+  function gruposPesquisa(ids, limite = LIMITE_PESQUISA, maxIds = MAX_IDS_GRUPO) {
     const grupos = [];
     let atual = [], tamanho = 0;
     for (const id of ids) {
       const extra = atual.length ? 4 + id.length : id.length; // " OR " + id
-      if (atual.length && tamanho + extra > limite) {
+      if (atual.length && (tamanho + extra > limite || atual.length >= maxIds)) {
         grupos.push(atual);
         atual = [];
         tamanho = 0;
@@ -339,7 +341,7 @@ const Logica = (() => {
     return grupos.map(g => ({ ids: g, texto: textoClipboard(g) }));
   }
 
-  return { processar, extrairIdNome, ordemDaPasta, contarPaginas, textoClipboard, gruposPesquisa, LIMITE_PESQUISA };
+  return { processar, extrairIdNome, ordemDaPasta, contarPaginas, textoClipboard, gruposPesquisa, LIMITE_PESQUISA, MAX_IDS_GRUPO };
 })();
 </script>
 
@@ -517,7 +519,7 @@ function criarProgresso(el, tituloBase = document.title) {
     const grupos = Logica.gruposPesquisa(ids);
     const n = grupos.length;
     $("pesquisa-dica").textContent = n > 1
-      ? `${n} grupos de até ${Logica.LIMITE_PESQUISA} caracteres · colar um de cada vez na pesquisa do Explorador`
+      ? `${n} grupos de até ${Logica.MAX_IDS_GRUPO} IDs · colar um de cada vez na pesquisa do Explorador`
       : "Colar na pesquisa do Explorador";
     $("grupos").replaceChildren(...grupos.map((g, k) => {
       const codigo = el("code");
@@ -638,6 +640,12 @@ function criarProgresso(el, tituloBase = document.title) {
 
   $("btn-copiar").addEventListener("click", async () => {
     if (!ids.length) return;
+    // Nunca mais de MAX_IDS_GRUPO IDs de uma vez: acima disso, copia-se grupo a grupo
+    if (ids.length > Logica.MAX_IDS_GRUPO) {
+      estado(`Mais de ${Logica.MAX_IDS_GRUPO} IDs: copie grupo a grupo na Pesquisa no Explorador.`, "erro");
+      $("pesquisa").scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     if (!(await copiarTexto(Logica.textoClipboard(ids)))) {
       estado("Não foi possível copiar para o clipboard.", "erro");
       return;
