@@ -1,21 +1,4 @@
-<!doctype html>
-<html lang="pt-PT">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Recolhe os IDs dos PDFs de uma pasta com 1 ou 3+ páginas, prontos a copiar.">
-<meta name="theme-color" content="#15171c">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icone.ico">
-<link rel="apple-touch-icon" href="icon-192.png">
 <title>Proc-Scanner</title>
-<style>
-  @font-face { font-family: "Inter"; font-weight: 400; font-display: swap; src: url("fonts/Inter_18pt-Regular.ttf") format("truetype"); }
-  @font-face { font-family: "Inter"; font-weight: 600; font-display: swap; src: url("fonts/Inter_18pt-SemiBold.ttf") format("truetype"); }
-  @font-face { font-family: "Inter Display"; font-weight: 600; font-display: swap; src: url("fonts/Inter_24pt-SemiBold.ttf") format("truetype"); }
-  body { margin: 0; }
-  [hidden] { display: none !important; }
-</style>
 <style>
   /* Tema da linha "Processamento" (processamento_ui.py): só dark mode, por opção */
   :root {
@@ -199,8 +182,6 @@
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
-</head>
-<body>
 
 <div class="app">
   <aside class="sidebar">
@@ -664,9 +645,3 @@ function criarProgresso(el, tituloBase = document.title) {
   mostrarVazio();
 })();
 </script>
-
-<script>
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
-</script>
-</body>
-</html>
