@@ -190,7 +190,7 @@
 
     <div class="secao">Pasta</div>
     <div class="grupo">
-      <button class="btn" id="btn-pasta" type="button">Escolher pasta…</button>
+      <button class="btn" id="btn-pasta" type="button" disabled title="Temporariamente desativado: arraste a pasta para a janela">Escolher pasta…</button>
       <input id="input-pasta" type="file" webkitdirectory multiple hidden>
       <div class="chip" id="chip">
         <div class="nome" id="nome-pasta">Nenhuma pasta selecionada</div>
@@ -209,7 +209,7 @@
 
     <div class="rodape">
       <button class="btn-principal" id="btn-processar" type="button">Processar</button>
-      <div class="versao">Versão web 1.4</div>
+      <div class="versao">Versão web 1.5</div>
     </div>
   </aside>
 
@@ -534,8 +534,12 @@ function criarProgresso(el, tituloBase = document.title) {
     $("n-pdfs").hidden = false;
   }
 
+  // Botão "Escolher pasta" temporariamente desativado (versão 1.5): para voltar a ligar, pôr false
+  // e tirar o disabled/title do botão no HTML. Arrastar a pasta para a janela continua a funcionar.
+  const PASTA_DESATIVADA = true;
+
   // Escolher pasta: só os ficheiros da própria pasta, sem subpastas (como o os.listdir)
-  $("btn-pasta").addEventListener("click", () => $("input-pasta").click());
+  $("btn-pasta").addEventListener("click", () => { if (!PASTA_DESATIVADA) $("input-pasta").click(); });
   $("input-pasta").addEventListener("change", e => {
     const todos = [...e.target.files];
     if (!todos.length) return;
@@ -577,7 +581,7 @@ function criarProgresso(el, tituloBase = document.title) {
     ocupado = sim;
     $("btn-processar").disabled = sim;
     $("btn-processar").textContent = sim ? "A processar…" : "Processar";
-    $("btn-pasta").disabled = sim;
+    $("btn-pasta").disabled = sim || PASTA_DESATIVADA;
     $("btn-limpar").disabled = sim;
     if (sim) $("btn-copiar").disabled = true;
   }
@@ -587,7 +591,7 @@ function criarProgresso(el, tituloBase = document.title) {
 
   $("btn-processar").addEventListener("click", async () => {
     if (ocupado) return;
-    if (!ficheiros) { estado("Selecione uma pasta primeiro!", "erro"); return; }
+    if (!ficheiros) { estado(PASTA_DESATIVADA ? "Arraste uma pasta para a janela primeiro!" : "Selecione uma pasta primeiro!", "erro"); return; }
     if (!window.PDFLib) { estado("Erro: o leitor de PDF não carregou. Recarregue a página.", "erro"); return; }
 
     // Limpar antes de começar: os resultados novos nunca se misturam com os antigos
